@@ -173,11 +173,17 @@ Erstelle `config.json` aus `config.example.json` mit den Nutzerdaten. Setze den 
 - Trage die Voice ID in die Config ein
 
 **Schritt 4 — Systemprompt anpassen:**
-Passe den Systemprompt in `server.py` → `build_system_prompt()` an. Ersetze die hardcoded Werte:
-- "Julian" → Name des Nutzers
-- "KI-Berater und Automatisierungsexperte" → Taetigkeit des Nutzers
-- "Sir" → gewuenschte Anrede des Nutzers
-- "Hamburg" → Stadt des Nutzers (auch in der CITY Variable oben im File und in config.json)
+Oeffne `server.py` und finde die Funktion `build_system_prompt()`. Dort steht der komplette Systemprompt als f-String. Ersetze ALLE Vorkommen der folgenden Werte im gesamten Prompt-Text:
+- Jedes "Julian" → Name des Nutzers (kommt mehrfach vor im Prompt!)
+- "KI-Berater und Automatisierungsexperte" → Taetigkeit/Rolle des Nutzers
+- Jedes "Sir" als Anrede → gewuenschte Anrede des Nutzers
+- "Hamburg" → Stadt des Nutzers
+
+Ausserdem oben in `server.py` bei den Config-Defaults:
+- `USER_NAME = config.get("user_name", "Julian")` → Default-Name anpassen
+- `CITY = config.get("city", "Hamburg")` → Default-Stadt anpassen
+
+WICHTIG: Pruefe den Prompt sorgfaeltig — "Julian" und "Sir" kommen an mehreren Stellen vor. Alle muessen ersetzt werden.
 
 **Schritt 5 — Testen:**
 - Starte den Server: `python server.py`
