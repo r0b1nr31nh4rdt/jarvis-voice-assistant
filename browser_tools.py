@@ -50,25 +50,31 @@ async def search_and_read(query: str) -> dict:
     ctx = await _get_browser()
     page = await ctx.new_page()
     try:
-        # DuckDuckGo search (no cookie banner, no reCAPTCHA)
+        # Block non-HTTPS navigation before any content loads
+        async def _block_http(route):
+            if route.request.url.startswith("http://"):
+                await route.abort()
+            else:
+                await route.continue_()
+        await page.route("**/*", _block_http)
+
         search_url = f"https://duckduckgo.com/?q={quote_plus(query)}"
         await page.goto(search_url, timeout=15000)
         _bring_chromium_to_front()
         await page.wait_for_timeout(2000)
 
-        # Click first organic result
         first_link = page.locator('[data-testid="result-title-a"]').first
         if await first_link.count() > 0:
             await first_link.click()
             await page.wait_for_timeout(3000)
 
-            # Read page content
-            title = await page.title()
             url = page.url
             try:
                 _require_https(url)
             except ValueError as e:
                 return {"error": str(e), "url": url}
+
+            title = await page.title()
             text = await page.evaluate("""
                 () => {
                     const selectors = ['main', 'article', '[role="main"]', '.content', '#content', 'body'];
@@ -87,7 +93,7 @@ async def search_and_read(query: str) -> dict:
     except Exception as e:
         return {"error": str(e), "url": query}
     finally:
-        pass
+        await page.close()
 
 
 async def visit(url: str, max_chars: int = 5000) -> dict:
@@ -135,7 +141,7 @@ async def fetch_news() -> str:
     except Exception as e:
         return f"News konnten nicht geladen werden: {e}"
     finally:
-        pass  # Keep page open so user can see it
+        await page.close()
 
 
 async def open_url(url: str):

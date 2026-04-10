@@ -18,8 +18,12 @@ end tell
 EOF
 
 # 2. Open Apple Music (optional — plays playlist if set, otherwise just opens)
+# Variable passed via argv, never interpolated into the AppleScript string
 if [ -n "${APPLE_MUSIC_PLAYLIST:-}" ]; then
-    osascript -e "tell application \"Music\" to play playlist \"$APPLE_MUSIC_PLAYLIST\""
+    osascript -e 'on run argv' \
+              -e 'tell application "Music" to play playlist (item 1 of argv)' \
+              -e 'end run' \
+              -- "$APPLE_MUSIC_PLAYLIST"
 else
     open -a "Music"
 fi
@@ -36,8 +40,9 @@ fi
 
 # 5. Wait for server to start, then open Chrome
 sleep 3
-CHROME_ARGS="--autoplay-policy=no-user-gesture-required http://localhost:8340"
+# Use array to prevent word-splitting and injection via BROWSER_URL
+CHROME_ARGS=("--autoplay-policy=no-user-gesture-required" "http://localhost:8340")
 if [ -n "${BROWSER_URL:-}" ]; then
-    CHROME_ARGS="$CHROME_ARGS $BROWSER_URL"
+    CHROME_ARGS+=("$BROWSER_URL")
 fi
-open -a "Google Chrome" --args $CHROME_ARGS
+open -a "Google Chrome" --args "${CHROME_ARGS[@]}"

@@ -44,8 +44,9 @@ import screen_capture
 def get_weather_sync():
     """Fetch raw weather data at startup."""
     import urllib.request
+    from urllib.parse import quote as urlquote
     try:
-        req = urllib.request.Request(f"https://wttr.in/{CITY}?format=j1", headers={"User-Agent": "curl"})
+        req = urllib.request.Request(f"https://wttr.in/{urlquote(CITY)}?format=j1", headers={"User-Agent": "curl"})
         resp = urllib.request.urlopen(req, timeout=5)
         data = json.loads(resp.read())
         c = data["current_condition"][0]
@@ -56,7 +57,8 @@ def get_weather_sync():
             "humidity": c["humidity"],
             "wind_kmh": c["windspeedKmph"],
         }
-    except:
+    except Exception as e:
+        print(f"[jarvis] Wetter-Abruf fehlgeschlagen: {e}", flush=True)
         return None
 
 
@@ -69,7 +71,8 @@ def get_tasks_sync():
         with open(tasks_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
         return [l.strip().replace("- [ ]", "").strip() for l in lines if l.strip().startswith("- [ ]")]
-    except:
+    except Exception as e:
+        print(f"[jarvis] Tasks-Abruf fehlgeschlagen: {e}", flush=True)
         return []
 
 
@@ -264,10 +267,10 @@ async def process_message(session_id: str, user_text: str, ws: WebSocket):
 
         try:
             action_result = await execute_action(action)
-            print(f"  Result: {action_result}", flush=True)
+            print(f"  Result: {action_result[:200]}", flush=True)
         except Exception as e:
             print(f"  Action error: {e}", flush=True)
-            action_result = f"Fehler: {e}"
+            action_result = "Aktion fehlgeschlagen."
 
         if action["type"] == "OPEN":
             # Just opened browser, nothing to summarize
@@ -309,7 +312,10 @@ async def websocket_endpoint(ws: WebSocket, token: str = ""):
 
     try:
         while True:
-            data = await ws.receive_json()
+            try:
+                data = await ws.receive_json()
+            except Exception:
+                continue
             user_text = data.get("text", "").strip()
             if not user_text:
                 continue
