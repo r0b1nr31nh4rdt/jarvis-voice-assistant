@@ -2,7 +2,7 @@
 """
 Jarvis — Double Clap Trigger
 Listens to mic. Detects two claps within 1.2s, min 0.1s apart.
-On trigger: runs scripts/launch-session.ps1 then exits.
+On trigger: runs scripts/launch-session.sh then exits.
 """
 
 import sounddevice as sd
@@ -10,21 +10,19 @@ import numpy as np
 import subprocess
 import time
 import os
-import json
 
-# Load config
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "config.json")
-with open(CONFIG_PATH, "r") as f:
-    config = json.load(f)
+from dotenv import load_dotenv
 
-WORKSPACE_PATH = config["workspace_path"]
-SCRIPT_PATH = os.path.join(WORKSPACE_PATH, "scripts", "launch-session.ps1")
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_PATH = os.path.join(SCRIPT_DIR, "launch-session.sh")
 
 SAMPLE_RATE = 44100
 BLOCK_SIZE = 1024
 THRESHOLD = 0.15       # RMS volume spike threshold — lower = more sensitive
 MIN_GAP = 0.1          # Minimum seconds between claps
-MAX_GAP = 1.2          # Maximum seconds between claps — more time for second clap
+MAX_GAP = 1.2          # Maximum seconds between claps
 COOLDOWN = 3.0         # Seconds to ignore after trigger fires
 
 last_clap_time = 0.0
@@ -48,7 +46,7 @@ def audio_callback(indata, frames, time_info, status):
                 print(f"[jarvis] Double clap detected! Firing launch script. Shutting down.", flush=True)
                 triggered = True
                 last_clap_time = 0.0
-                subprocess.Popen(["powershell", "-ExecutionPolicy", "Bypass", "-File", SCRIPT_PATH])
+                subprocess.Popen(["bash", SCRIPT_PATH])
             else:
                 # First clap
                 print(f"[jarvis] First clap detected (rms={rms:.3f})", flush=True)

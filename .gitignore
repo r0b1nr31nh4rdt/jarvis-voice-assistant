@@ -1,5 +1,50 @@
+# ── macOS ────────────────────────────────────────────
 .DS_Store
-*.log
-__pycache__/
-*.pyc
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.DocumentRevisions-V100
+.TemporaryItems
+__MACOSX
+
+# ── Umgebungsvariablen ────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Jarvis Config (Legacy) ────────────────────────────
 config.json
+
+# ── Python ───────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ── Virtuelle Umgebungen ──────────────────────────────
+venv/
+.venv/
+env/
+.env/
+
+# ── Logs & temporäre Dateien ──────────────────────────
+*.log
+*.tmp
+*.bak
+
+# ── IDEs ─────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo

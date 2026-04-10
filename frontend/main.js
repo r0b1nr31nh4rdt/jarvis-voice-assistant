@@ -23,7 +23,8 @@ document.addEventListener('touchstart', unlockAudio, { once: false });
 document.addEventListener('keydown', unlockAudio, { once: false });
 
 function connect() {
-    ws = new WebSocket(`ws://${location.host}/ws`);
+    const token = window.JARVIS_TOKEN || '';
+    ws = new WebSocket(`ws://${location.host}/ws?token=${token}`);
     ws.onopen = () => {
         console.log('[jarvis] WebSocket connected');
         status.textContent = 'Klicke einmal irgendwo, dann spricht Jarvis.';

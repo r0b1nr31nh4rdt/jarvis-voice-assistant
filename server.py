@@ -6,32 +6,33 @@ speaks with ElevenLabs, controls browser with Playwright.
 
 import asyncio
 import base64
-import json
 import os
 import re
+import secrets
 import time
 
 import anthropic
 import httpx
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from dotenv import load_dotenv
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, status
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 
-# Load config
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
-with open(CONFIG_PATH, "r") as f:
-    config = json.load(f)
+load_dotenv()
 
-ANTHROPIC_API_KEY = config["anthropic_api_key"]
-ELEVENLABS_API_KEY = config["elevenlabs_api_key"]
-ELEVENLABS_VOICE_ID = config.get("elevenlabs_voice_id", "rDmv3mOhK6TnhYWckFaD")
-USER_NAME = config.get("user_name", "Julian")
-USER_ADDRESS = config.get("user_address", "Sir")
-CITY = config.get("city", "Hamburg")
-TASKS_FILE = config.get("obsidian_inbox_path", "")
+ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+ELEVENLABS_API_KEY = os.environ["ELEVENLABS_API_KEY"]
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "rDmv3mOhK6TnhYWckFaD")
+USER_NAME = os.getenv("USER_NAME", "Julian")
+USER_ADDRESS = os.getenv("USER_ADDRESS", "Sir")
+CITY = os.getenv("CITY", "Hamburg")
+TASKS_FILE = os.getenv("OBSIDIAN_INBOX_PATH", "")
 
 ai = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 http = httpx.AsyncClient(timeout=30)
+
+# Generate a random auth token at startup
+AUTH_TOKEN = secrets.token_hex(32)
 
 app = FastAPI()
 
@@ -289,7 +290,11 @@ async def process_message(session_id: str, user_text: str, ws: WebSocket):
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
+async def websocket_endpoint(ws: WebSocket, token: str = ""):
+    if not secrets.compare_digest(token, AUTH_TOKEN):
+        await ws.close(code=status.WS_1008_POLICY_VIOLATION)
+        print("[jarvis] WebSocket abgelehnt: ungültiger Token", flush=True)
+        return
     await ws.accept()
     session_id = str(id(ws))
     print(f"[jarvis] Client connected", flush=True)
@@ -313,7 +318,12 @@ app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__
 
 @app.get("/")
 async def serve_index():
-    return FileResponse(os.path.join(os.path.dirname(__file__), "frontend", "index.html"))
+    html_path = os.path.join(os.path.dirname(__file__), "frontend", "index.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        html = f.read()
+    token_script = f'<script>window.JARVIS_TOKEN = "{AUTH_TOKEN}";</script>'
+    html = html.replace("</head>", f"{token_script}\n</head>")
+    return HTMLResponse(content=html)
 
 
 if __name__ == "__main__":
@@ -322,4 +332,5 @@ if __name__ == "__main__":
     print("  J.A.R.V.I.S. V2 Server", flush=True)
     print(f"  http://localhost:8340", flush=True)
     print("=" * 50, flush=True)
-    uvicorn.run(app, host="0.0.0.0", port=8340)
+    print(f"  Auth-Token: {AUTH_TOKEN}", flush=True)
+    uvicorn.run(app, host="127.0.0.1", port=8340)
