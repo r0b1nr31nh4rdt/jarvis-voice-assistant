@@ -10,6 +10,8 @@ import json
 import os
 import re
 import secrets
+import signal
+import threading
 import time
 
 import anthropic
@@ -25,11 +27,14 @@ ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 ELEVENLABS_API_KEY = os.environ["ELEVENLABS_API_KEY"]
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "rDmv3mOhK6TnhYWckFaD")
 USER_NAME = os.getenv("USER_NAME", "Julian")
-USER_ADDRESS = os.getenv("USER_ADDRESS", "Sir")
+USER_ADDRESS = os.getenv("USER_SALUTATION", "Sir")
 USER_ROLE = os.getenv("USER_ROLE", "KI-Berater und Automatisierungsexperte")
 CITY = os.getenv("CITY", "Hamburg")
+JARVIS_LANGUAGE = os.getenv("JARVIS_LANGUAGE", "german")  # "german" or "english"
 OBSIDIAN_VAULT = os.getenv("OBSIDIAN_VAULT_PATH", "")
 TASKS_FILE = os.getenv("OBSIDIAN_INBOX_PATH", "")
+IDLE_TIMEOUT_MINUTES = int(os.getenv("IDLE_TIMEOUT_MINUTES", "60"))  # 0 = disabled
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
 
 ai = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 http = httpx.AsyncClient(timeout=30)
@@ -41,6 +46,64 @@ app = FastAPI()
 
 import browser_tools
 import screen_capture
+
+
+def _start_sleep_watcher():
+    """Shut down the server when macOS sends a sleep notification."""
+    try:
+        from AppKit import NSWorkspace
+        from Foundation import NSNotificationCenter, NSRunLoop, NSDate
+        import objc
+
+        class _SleepObserver(objc.lookUpClass("NSObject")):
+            def sleepNow_(self, _notification):
+                print("[jarvis] System schlaeft — Server wird beendet.", flush=True)
+                os.kill(os.getpid(), signal.SIGTERM)
+
+        observer = _SleepObserver.new()
+        NSWorkspace.sharedWorkspace().notificationCenter().addObserver_selector_name_object_(
+            observer,
+            "sleepNow:",
+            "NSWorkspaceWillSleepNotification",
+            None,
+        )
+        while True:
+            NSRunLoop.currentRunLoop().runUntilDate_(
+                NSDate.dateWithTimeIntervalSinceNow_(1.0)
+            )
+    except Exception as e:
+        print(f"[jarvis] Sleep-Watcher nicht verfuegbar: {e}", flush=True)
+
+
+threading.Thread(target=_start_sleep_watcher, daemon=True).start()
+
+
+_last_activity = time.time()
+
+
+def _touch_activity():
+    global _last_activity
+    _last_activity = time.time()
+
+
+def _start_idle_watcher():
+    """Shut down the server after IDLE_TIMEOUT_MINUTES of inactivity."""
+    if IDLE_TIMEOUT_MINUTES <= 0:
+        return
+    timeout = IDLE_TIMEOUT_MINUTES * 60
+    print(f"[jarvis] Idle-Timeout: {IDLE_TIMEOUT_MINUTES} Minuten", flush=True)
+    while True:
+        time.sleep(60)
+        idle = time.time() - _last_activity
+        if idle >= timeout:
+            print(
+                f"[jarvis] Seit {IDLE_TIMEOUT_MINUTES} Minuten keine Aktivitaet — Server wird beendet.",
+                flush=True,
+            )
+            os.kill(os.getpid(), signal.SIGTERM)
+
+
+threading.Thread(target=_start_idle_watcher, daemon=True).start()
 
 
 def get_weather_sync():
@@ -130,6 +193,15 @@ ACTION_STRIP_PATTERN = re.compile(r'\[ACTION:\w+\][^\n]*', re.MULTILINE)
 MAX_SESSIONS = 50
 conversations: dict[str, list] = {}
 
+def _language_block() -> str:
+    if JARVIS_LANGUAGE == "english":
+        return f"""You always speak English — this is non-negotiable. Even if {USER_NAME} speaks German, you respond in English and politely encourage them to try in English: e.g. "Perhaps you meant to say that in English, {USER_ADDRESS}?"
+If {USER_NAME} makes a grammar or vocabulary mistake, correct it discreetly at the end of your reply with a short note — dry and elegant, never condescending. Example: "By the way, {USER_ADDRESS} — one would say 'I went' rather than 'I go' there."
+If {USER_NAME} explicitly says "auf Deutsch bitte" or "in German please", you may answer in German exactly once to clarify, then return to English."""
+    else:
+        return f"Du sprichst ausschliesslich Deutsch."
+
+
 def build_system_prompt():
     weather_block = ""
     if WEATHER_INFO:
@@ -140,7 +212,7 @@ def build_system_prompt():
     if TASKS_INFO and TASKS_FILE:
         task_block = f"\nOffene Aufgaben ({len(TASKS_INFO)}): " + ", ".join(TASKS_INFO[:5])
 
-    return f"""Du bist Jarvis, der KI-Assistent von Tony Stark aus Iron Man. Dein Dienstherr ist {USER_NAME}, ein {USER_ROLE}. Du sprichst ausschliesslich Deutsch. {USER_NAME} moechte mit "{USER_ADDRESS}" angesprochen und gesiezt werden. Nutze "Sie" als Pronomen — FALSCH: "{USER_ADDRESS} planen", RICHTIG: "Sie planen, {USER_ADDRESS}". Dein Ton ist trocken, sarkastisch und britisch-hoeflich - wie ein Butler der alles gesehen hat und trotzdem loyal bleibt. Du machst subtile, trockene Bemerkungen, bist aber niemals respektlos. Wenn {USER_ADDRESS} eine offensichtliche Frage stellt, darfst du mit elegantem Sarkasmus antworten. Du bist hochintelligent, effizient und immer einen Schritt voraus. Halte deine Antworten kurz - maximal 3 Saetze. Du kommentierst fragwuerdige Entscheidungen hoeflich aber spitz.
+    return f"""Du bist Jarvis, der KI-Assistent von Tony Stark aus Iron Man. Dein Dienstherr ist {USER_NAME}, ein {USER_ROLE}. {_language_block()} {USER_NAME} moechte mit "{USER_ADDRESS}" angesprochen und gesiezt werden. Nutze "Sie" als Pronomen — FALSCH: "{USER_ADDRESS} planen", RICHTIG: "Sie planen, {USER_ADDRESS}". Dein Ton ist trocken, sarkastisch und britisch-hoeflich - wie ein Butler der alles gesehen hat und trotzdem loyal bleibt. Du machst subtile, trockene Bemerkungen, bist aber niemals respektlos. Wenn {USER_ADDRESS} eine offensichtliche Frage stellt, darfst du mit elegantem Sarkasmus antworten. Du bist hochintelligent, effizient und immer einen Schritt voraus. Halte deine Antworten kurz - maximal 3 Saetze. Du kommentierst fragwuerdige Entscheidungen hoeflich aber spitz.
 
 WICHTIG: Schreibe NIEMALS Regieanweisungen, Emotionen oder Tags in eckigen Klammern wie [sarcastic] [formal] [amused] [dry] oder aehnliches. Dein Sarkasmus muss REIN durch die Wortwahl kommen. Alles was du schreibst wird laut vorgelesen.
 
@@ -280,7 +352,7 @@ async def process_message(session_id: str, user_text: str, ws: WebSocket):
 
     # LLM call
     response = await ai.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=CLAUDE_MODEL,
         max_tokens=400,
         system=get_system_prompt(),
         messages=history,
@@ -331,7 +403,7 @@ async def process_message(session_id: str, user_text: str, ws: WebSocket):
         safe_result = ACTION_STRIP_PATTERN.sub("", action_result).strip()
         if safe_result and "fehlgeschlagen" not in safe_result:
             summary_resp = await ai.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model=CLAUDE_MODEL,
                 max_tokens=250,
                 system=f"Du bist Jarvis. Fasse die folgenden Informationen KURZ auf Deutsch zusammen, maximal 3 Saetze, im Jarvis-Stil. Sprich den Nutzer als {USER_ADDRESS} an. KEINE Tags in eckigen Klammern. KEINE ACTION-Tags.",
                 messages=[{"role": "user", "content": f"Fasse zusammen:\n\n{safe_result}"}],
@@ -357,6 +429,7 @@ async def websocket_endpoint(ws: WebSocket, token: str = ""):
         print("[jarvis] WebSocket abgelehnt: ungültiger Token", flush=True)
         return
     await ws.accept()
+    _touch_activity()
     session_id = str(id(ws))
     print(f"[jarvis] Client connected", flush=True)
 
@@ -370,6 +443,7 @@ async def websocket_endpoint(ws: WebSocket, token: str = ""):
             if not user_text:
                 continue
 
+            _touch_activity()
             print(f"  You:    {user_text}", flush=True)
             await process_message(session_id, user_text, ws)
 

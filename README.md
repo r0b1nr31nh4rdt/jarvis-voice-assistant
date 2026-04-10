@@ -90,6 +90,8 @@ You (speak) → Chrome Browser (Web Speech API) → FastAPI Server (local)
    ```bash
    git clone https://github.com/Julian-Ivanov/jarvis-voice-assistant.git
    cd jarvis-voice-assistant
+   python3 -m venv .venv
+   source .venv/bin/activate
    pip3 install -r requirements.txt
    playwright install chromium
    ```
@@ -105,7 +107,7 @@ You (speak) → Chrome Browser (Web Speech API) → FastAPI Server (local)
    ELEVENLABS_API_KEY=sk_...
    ELEVENLABS_VOICE_ID=your_voice_id
    USER_NAME=Your Name
-   USER_ADDRESS=Sir
+   USER_SALUTATION=Sir
    CITY=Hamburg
    OBSIDIAN_INBOX_PATH=/Users/you/path/to/obsidian/inbox
    APPLE_MUSIC_PLAYLIST=Your Playlist
@@ -127,9 +129,10 @@ You (speak) → Chrome Browser (Web Speech API) → FastAPI Server (local)
 
 ### Start Jarvis manually
 ```bash
+source .venv/bin/activate
 python3 server.py
 ```
-Then open `http://localhost:8340` in Chrome.
+Then open `http://localhost:8340` in Chrome or Brave.
 
 ### Start everything with a double-clap
 ```bash

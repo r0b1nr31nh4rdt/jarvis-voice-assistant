@@ -6,7 +6,13 @@ Dieses Workspace ist **Jarvis** — ein persoenlicher KI-Assistent mit Sprachste
 
 ## Fuer Claude Code: Setup-Modus
 
-Wenn der Nutzer nach dem Setup fragt oder "Richte Jarvis ein" sagt, folge den Anweisungen in `SETUP.md`. Frage den Nutzer nach seinem Namen, seiner Taetigkeit, und wie er angesprochen werden moechte — diese Infos muessen in den Systemprompt in `server.py` eingetragen werden (ersetze die aktuellen Platzhalter "Julian", "KI-Berater und Automatisierungsexperte", "Sir").
+Wenn der Nutzer nach dem Setup fragt oder "Richte Jarvis ein" sagt, folge den Anweisungen in `SETUP.md`.
+
+**WICHTIG — Pruefe zuerst die `.env` auf bereits eingetragene Werte:**
+Lese die `.env` Datei und pruefe ob die Platzhalter (z.B. `your_anthropic_api_key_here`, `your_name_here`) noch vorhanden sind.
+- Sind **alle** Werte bereits eingetragen (keine Platzhalter mehr) → frage den Nutzer ob er wirklich neu einrichten moechte, bevor du etwas ueberschreibst.
+- Sind **manche** Werte noch Platzhalter → frage nur nach den fehlenden Werten und lasse die bereits eingetragenen unangetastet.
+- Ueberschreibe **niemals** einen Wert, der kein Platzhalter mehr ist, ohne ausdrueckliche Bestaetigung des Nutzers.
 
 **WICHTIG — Pruefe und installiere zuerst alle Voraussetzungen:**
 
@@ -16,9 +22,11 @@ Wenn der Nutzer nach dem Setup fragt oder "Richte Jarvis ein" sagt, folge den An
 
 2. **Google Chrome oder Brave**: Pruefe ob Chrome oder Brave installiert ist. Falls nicht, installiere Chrome via Homebrew: `brew install --cask google-chrome`
 
-3. **pip Dependencies**: `pip3 install -r requirements.txt`
+3. **Virtual Environment**: `python3 -m venv .venv && source .venv/bin/activate`
 
-4. **Playwright Browser**: `playwright install chromium`
+4. **pip Dependencies**: `pip3 install -r requirements.txt`
+
+5. **Playwright Browser**: `playwright install chromium`
 
 Erst NACHDEM alle Voraussetzungen installiert sind, fahre mit dem Setup in `SETUP.md` fort (API Keys abfragen, .env befuellen, etc.).
 

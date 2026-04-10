@@ -45,6 +45,7 @@ Claude Code fragt dich dann nach:
 ### 1. Voraussetzungen installieren
 Claude Code prueft und installiert automatisch:
 - **Python 3.10+** (falls nicht vorhanden: `brew install python`)
+- **Virtual Environment** (`python3 -m venv .venv && source .venv/bin/activate`)
 - **Alle Python-Pakete** (`pip3 install -r requirements.txt`)
 - **Playwright Chromium** (`playwright install chromium`)
 
@@ -55,7 +56,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 ELEVENLABS_API_KEY=sk_...
 ELEVENLABS_VOICE_ID=VOICE_ID
 USER_NAME=Dein Name
-USER_ADDRESS=Sir
+USER_SALUTATION=Sir
 USER_ROLE=Deine Taetigkeit
 CITY=Hamburg
 OBSIDIAN_INBOX_PATH=/Users/dein_user/pfad/zum/obsidian/inbox
@@ -93,6 +94,7 @@ Mikrofon (Chrome/Brave) → Web Speech API → WebSocket → FastAPI Server
 
 ### Jarvis manuell starten
 ```bash
+source .venv/bin/activate
 python3 server.py
 ```
 Dann http://localhost:8340 in Chrome oder Brave oeffnen.
@@ -144,6 +146,7 @@ Wenn ein Nutzer "Richte Jarvis ein" sagt, fuehre folgende Schritte aus:
 - Pruefe ob Python 3.10+ installiert ist: `python3 --version`
 - Falls nicht: `brew install python` — warte bis fertig, pruefe erneut
 - Pruefe ob Chrome oder Brave installiert ist. Falls nicht, installiere Chrome via Homebrew: `brew install --cask google-chrome`
+- Erstelle Virtual Environment: `python3 -m venv .venv && source .venv/bin/activate`
 - Installiere Python-Pakete: `pip3 install -r requirements.txt`
 - Installiere Playwright Browser: `playwright install chromium`
 

@@ -41,7 +41,12 @@ fi
 # 5. Wait for server to start, then open Chrome
 sleep 3
 # Use array to prevent word-splitting and injection via BROWSER_URL
-CHROME_ARGS=("--autoplay-policy=no-user-gesture-required" "http://localhost:8340")
+CHROME_ARGS=(
+    "--autoplay-policy=no-user-gesture-required"
+    "--disable-background-timer-throttling"
+    "--disable-tab-discarding"
+    "http://localhost:8340"
+)
 if [ -n "${BROWSER_URL:-}" ]; then
     CHROME_ARGS+=("$BROWSER_URL")
 fi
