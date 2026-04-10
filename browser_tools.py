@@ -4,11 +4,9 @@ Web search via DuckDuckGo Lite, page visits via Playwright, URL opening.
 """
 
 import asyncio
-import re
 import webbrowser
 import subprocess
 from urllib.parse import urlparse, quote_plus
-import httpx
 from playwright.async_api import async_playwright
 
 _browser = None
