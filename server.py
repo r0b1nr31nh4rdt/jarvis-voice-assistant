@@ -7,6 +7,7 @@ speaks with ElevenLabs, controls browser with Playwright.
 import asyncio
 import base64
 import json
+import logging
 import os
 import re
 import secrets
@@ -17,11 +18,25 @@ import time
 import anthropic
 import httpx
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 
 load_dotenv()
+
+# Logging — Terminal + jarvis.log
+_log_path = os.path.join(os.path.dirname(__file__), "jarvis.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.FileHandler(_log_path, encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+log = logging.getLogger("jarvis")
 
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 ELEVENLABS_API_KEY = os.environ["ELEVENLABS_API_KEY"]
@@ -30,6 +45,7 @@ USER_NAME = os.getenv("USER_NAME", "Julian")
 USER_ADDRESS = os.getenv("USER_SALUTATION", "Sir")
 USER_ROLE = os.getenv("USER_ROLE", "KI-Berater und Automatisierungsexperte")
 CITY = os.getenv("CITY", "Hamburg")
+CITY_SPOKEN = os.getenv("CITY_SPOKEN", CITY)  # Phonetische Schreibweise fuer TTS
 JARVIS_LANGUAGE = os.getenv("JARVIS_LANGUAGE", "german")  # "german" or "english"
 OBSIDIAN_VAULT = os.getenv("OBSIDIAN_VAULT_PATH", "")
 TASKS_FILE = os.getenv("OBSIDIAN_INBOX_PATH", "")
@@ -41,8 +57,6 @@ http = httpx.AsyncClient(timeout=30)
 
 # Generate a random auth token at startup
 AUTH_TOKEN = secrets.token_hex(32)
-
-app = FastAPI()
 
 import browser_tools
 import screen_capture
@@ -57,7 +71,7 @@ def _start_sleep_watcher():
 
         class _SleepObserver(objc.lookUpClass("NSObject")):
             def sleepNow_(self, _notification):
-                print("[jarvis] System schlaeft — Server wird beendet.", flush=True)
+                log.info("System schlaeft — Server wird beendet.")
                 os.kill(os.getpid(), signal.SIGTERM)
 
         observer = _SleepObserver.new()
@@ -72,7 +86,7 @@ def _start_sleep_watcher():
                 NSDate.dateWithTimeIntervalSinceNow_(1.0)
             )
     except Exception as e:
-        print(f"[jarvis] Sleep-Watcher nicht verfuegbar: {e}", flush=True)
+        log.info(f"Sleep-Watcher nicht verfuegbar: {e}")
 
 
 threading.Thread(target=_start_sleep_watcher, daemon=True).start()
@@ -91,19 +105,27 @@ def _start_idle_watcher():
     if IDLE_TIMEOUT_MINUTES <= 0:
         return
     timeout = IDLE_TIMEOUT_MINUTES * 60
-    print(f"[jarvis] Idle-Timeout: {IDLE_TIMEOUT_MINUTES} Minuten", flush=True)
+    log.info(f"Idle-Timeout: {IDLE_TIMEOUT_MINUTES} Minuten")
     while True:
         time.sleep(60)
         idle = time.time() - _last_activity
         if idle >= timeout:
-            print(
-                f"[jarvis] Seit {IDLE_TIMEOUT_MINUTES} Minuten keine Aktivitaet — Server wird beendet.",
-                flush=True,
-            )
+            log.info(f"Seit {IDLE_TIMEOUT_MINUTES} Minuten keine Aktivitaet — Server wird beendet.")
             os.kill(os.getpid(), signal.SIGTERM)
 
 
 threading.Thread(target=_start_idle_watcher, daemon=True).start()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    log.info("Shutdown — Ressourcen werden freigegeben.")
+    await browser_tools.close()
+    await http.aclose()
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 def get_weather_sync():
@@ -123,7 +145,7 @@ def get_weather_sync():
             "wind_kmh": c["windspeedKmph"],
         }
     except Exception as e:
-        print(f"[jarvis] Wetter-Abruf fehlgeschlagen: {e}", flush=True)
+        log.info(f"Wetter-Abruf fehlgeschlagen: {e}")
         return None
 
 
@@ -137,7 +159,7 @@ def get_tasks_sync():
             lines = f.readlines()
         return [l.strip().replace("- [ ]", "").strip() for l in lines if l.strip().startswith("- [ ]")]
     except Exception as e:
-        print(f"[jarvis] Tasks-Abruf fehlgeschlagen: {e}", flush=True)
+        log.info(f"Tasks-Abruf fehlgeschlagen: {e}")
         return []
 
 
@@ -149,10 +171,10 @@ def write_task_sync(task_text: str) -> bool:
         tasks_path = os.path.join(TASKS_FILE, "Tasks.md")
         with open(tasks_path, "a", encoding="utf-8") as f:
             f.write(f"\n- [ ] {task_text}")
-        print(f"[jarvis] Task gespeichert: {task_text}", flush=True)
+        log.info(f"Task gespeichert: {task_text}")
         return True
     except Exception as e:
-        print(f"[jarvis] Task schreiben fehlgeschlagen: {e}", flush=True)
+        log.info(f"Task schreiben fehlgeschlagen: {e}")
         return False
 
 
@@ -167,20 +189,101 @@ def write_note_sync(title: str, content: str) -> bool:
         note_path = os.path.join(TASKS_FILE, filename)
         with open(note_path, "w", encoding="utf-8") as f:
             f.write(f"# {title}\n\n{content}\n")
-        print(f"[jarvis] Notiz erstellt: {filename}", flush=True)
+        log.info(f"Notiz erstellt: {filename}")
         return True
     except Exception as e:
-        print(f"[jarvis] Notiz schreiben fehlgeschlagen: {e}", flush=True)
+        log.info(f"Notiz schreiben fehlgeschlagen: {e}")
         return False
 
 
+def _find_note(name: str) -> str | None:
+    """Find a note file in TASKS_FILE by partial name match (case-insensitive)."""
+    if not TASKS_FILE:
+        return None
+    name_lower = name.lower().replace(" ", "-")
+    try:
+        for fname in os.listdir(TASKS_FILE):
+            if fname.endswith(".md") and name_lower in fname.lower():
+                return os.path.join(TASKS_FILE, fname)
+    except Exception:
+        pass
+    return None
+
+
+def list_notes_sync() -> list[str]:
+    """List all .md files in the inbox (excluding Tasks.md)."""
+    if not TASKS_FILE:
+        return []
+    try:
+        return [f for f in os.listdir(TASKS_FILE)
+                if f.endswith(".md") and f != "Tasks.md"]
+    except Exception:
+        return []
+
+
+def read_note_sync(name: str) -> str:
+    """Read a note by partial name match."""
+    path = _find_note(name)
+    if not path:
+        return f"Keine Notiz mit '{name}' gefunden."
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        return f"Notiz konnte nicht gelesen werden: {e}"
+
+
+def append_note_sync(name: str, content: str) -> bool:
+    """Append content to an existing note."""
+    path = _find_note(name)
+    if not path:
+        return False
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"\n{content}\n")
+        log.info(f"Notiz ergänzt: {os.path.basename(path)}")
+        return True
+    except Exception as e:
+        log.info(f"Notiz ergänzen fehlgeschlagen: {e}")
+        return False
+
+
+def mark_task_done_sync(task_text: str) -> bool:
+    """Mark a matching open task in Tasks.md as done."""
+    if not TASKS_FILE:
+        return False
+    tasks_path = os.path.join(TASKS_FILE, "Tasks.md")
+    try:
+        with open(tasks_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        new_lines = []
+        found = False
+        search = task_text.lower()
+        for line in lines:
+            if not found and "- [ ]" in line and search in line.lower():
+                line = line.replace("- [ ]", "- [x]", 1)
+                found = True
+            new_lines.append(line)
+        if found:
+            with open(tasks_path, "w", encoding="utf-8") as f:
+                f.writelines(new_lines)
+            log.info(f"Aufgabe erledigt: {task_text}")
+        return found
+    except Exception as e:
+        log.info(f"Task-Erledigung fehlgeschlagen: {e}")
+        return False
+
+
+_last_refresh = 0.0
+
 def refresh_data():
     """Refresh weather and tasks."""
-    global WEATHER_INFO, TASKS_INFO
+    global WEATHER_INFO, TASKS_INFO, _last_refresh
     WEATHER_INFO = get_weather_sync()
     TASKS_INFO = get_tasks_sync()
-    print(f"[jarvis] Wetter: {WEATHER_INFO}", flush=True)
-    print(f"[jarvis] Tasks: {len(TASKS_INFO)} geladen", flush=True)
+    _last_refresh = time.time()
+    log.info(f"Wetter: {WEATHER_INFO}")
+    log.info(f"Tasks: {len(TASKS_INFO)} geladen")
 
 WEATHER_INFO = ""
 TASKS_INFO = []
@@ -194,10 +297,10 @@ MAX_SESSIONS = 50
 conversations: dict[str, list] = {}
 
 def _language_block() -> str:
-    if JARVIS_LANGUAGE == "english":
-        return f"""You always speak English — this is non-negotiable. Even if {USER_NAME} speaks German, you respond in English and politely encourage them to try in English: e.g. "Perhaps you meant to say that in English, {USER_ADDRESS}?"
-If {USER_NAME} makes a grammar or vocabulary mistake, correct it discreetly at the end of your reply with a short note — dry and elegant, never condescending. Example: "By the way, {USER_ADDRESS} — one would say 'I went' rather than 'I go' there."
-If {USER_NAME} explicitly says "auf Deutsch bitte" or "in German please", you may answer in German exactly once to clarify, then return to English."""
+    if JARVIS_LANGUAGE == "bilingual":
+        return f"""Antworte immer in der Sprache, in der {USER_NAME} spricht.
+Spricht {USER_NAME} Deutsch: antworte auf Deutsch, englische Fachbegriffe sind dabei voellig in Ordnung.
+Spricht {USER_NAME} Englisch: antworte auf Englisch und korrigiere am Ende der Antwort diskret Grammatik- oder Vokabelfehler — trocken und elegant, niemals herablassend. Beispiel: "By the way, {USER_ADDRESS} — one would say 'I went' rather than 'I go' there." """
     else:
         return f"Du sprichst ausschliesslich Deutsch."
 
@@ -206,7 +309,7 @@ def build_system_prompt():
     weather_block = ""
     if WEATHER_INFO:
         w = WEATHER_INFO
-        weather_block = f"\nWetter {CITY}: {w['temp']}°C, gefuehlt {w['feels_like']}°C, {w['description']}"
+        weather_block = f"\nWetter {CITY_SPOKEN}: {w['temp']}°C, gefuehlt {w['feels_like']}°C, {w['description']}"
 
     task_block = ""
     if TASKS_INFO and TASKS_FILE:
@@ -216,15 +319,17 @@ def build_system_prompt():
 
 WICHTIG: Schreibe NIEMALS Regieanweisungen, Emotionen oder Tags in eckigen Klammern wie [sarcastic] [formal] [amused] [dry] oder aehnliches. Dein Sarkasmus muss REIN durch die Wortwahl kommen. Alles was du schreibst wird laut vorgelesen.
 
-Du hast Zugriff auf genau vier Aktionen — nicht mehr. Nutze ausschliesslich diese:
-
 AKTIONEN - Schreibe die passende Aktion ans ENDE deiner Antwort. Der Text VOR der Aktion wird vorgelesen, die Aktion selbst wird still ausgefuehrt.
-[ACTION:SEARCH] suchbegriff - Internet durchsuchen und Ergebnisse zusammenfassen. Nutze diese Aktion wenn {USER_ADDRESS} etwas nachschlagen, recherchieren oder googeln moechte.
+[ACTION:SEARCH] suchbegriff - Internet durchsuchen und Ergebnisse zusammenfassen.
 [ACTION:OPEN] url - Vollstaendige HTTPS-URL im Browser oeffnen (z.B. https://example.com). Nur wenn {USER_ADDRESS} explizit eine Seite oeffnen moechte.
-[ACTION:SCREEN] - Bildschirm analysieren. NUR ausfuehren wenn {USER_ADDRESS} EXPLIZIT fragt was auf dem Bildschirm zu sehen ist. WICHTIG: Schreibe NUR die Aktion, KEINEN Text davor. Hinweis: Der Screenshot wird zur Analyse an die Claude API uebertragen.
-[ACTION:NEWS] - Aktuelle Weltnachrichten abrufen. Nur wenn nach News, Nachrichten oder dem Weltgeschehen gefragt wird. Schreibe einen kurzen Satz davor wie "Ich schaue nach den aktuellen Nachrichten."
-[ACTION:TASK] aufgabe - Neue Aufgabe in Obsidian speichern. Nur wenn {USER_ADDRESS} explizit eine Aufgabe, ein Todo oder einen Punkt notieren moechte.
-[ACTION:NOTE] titel | inhalt - Neue Notiz in Obsidian anlegen. Nur wenn {USER_ADDRESS} explizit eine Notiz, einen Gedanken oder eine Zusammenfassung speichern moechte. Titel und Inhalt mit | trennen.
+[ACTION:SCREEN] - Bildschirm analysieren. NUR ausfuehren wenn {USER_ADDRESS} EXPLIZIT fragt was auf dem Bildschirm zu sehen ist. WICHTIG: Schreibe NUR die Aktion, KEINEN Text davor.
+[ACTION:NEWS] - Aktuelle Weltnachrichten abrufen. Nur wenn nach News oder Nachrichten gefragt wird.
+[ACTION:TASK] aufgabe - Neue Aufgabe in Obsidian speichern.
+[ACTION:TASK_DONE] aufgabentext - Aufgabe als erledigt markieren. Nutze den genauen oder ungefaehren Wortlaut der Aufgabe.
+[ACTION:NOTE] titel | inhalt - Neue Notiz in Obsidian anlegen. Titel und Inhalt mit | trennen. Obsidian-Links mit [[Notizname]] einbetten.
+[ACTION:NOTE_LIST] - Alle Notizen im Inbox auflisten. KEIN Text davor — NUR die Aktion, sonst nichts. Nicht fragen ob du es tun sollst, einfach tun.
+[ACTION:NOTE_READ] notizname - Bestehende Notiz lesen und vorlesen. KEIN Text davor — NUR die Aktion. Nutze einen Teil des Dateinamens.
+[ACTION:NOTE_APPEND] notizname | inhalt - Inhalt an bestehende Notiz anhaengen. Notizname und Inhalt mit | trennen.
 
 Erfinde keine weiteren Aktionen. Fuehre SCREEN nur auf explizite Aufforderung aus.
 
@@ -233,13 +338,15 @@ WENN {USER_NAME} "Jarvis activate" sagt:
 - Gebe eine kurze Info ueber das Wetter — Temperatur und ob Sonne/klar/bewoelkt/Regen, und wie es sich anfuehlt. Keine Luftfeuchtigkeit.
 - Fasse die Aufgaben kurz als Ueberblick in einem Satz zusammen, ohne dabei jede einzelne Aufgabe einfach vorzulesen. Gebe gerne einen humorvollen Kommentar am Ende an.
 - Sei kreativ bei der Begruessung.
+- WICHTIG: Verwende bei "Jarvis activate" KEINE Aktionen — nur Text. Alle Daten sind bereits im Systemkontext vorhanden.
 
 === AKTUELLE DATEN ==={weather_block}{task_block}
 ==="""
 
 
 def get_system_prompt():
-    return build_system_prompt().replace("{time}", time.strftime("%H:%M"))
+    spoken_time = time.strftime("%-H Uhr %M").replace(" 0", " ")
+    return build_system_prompt().replace("{time}", spoken_time)
 
 
 def extract_action(text: str):
@@ -283,13 +390,13 @@ async def synthesize_speech(text: str) -> bytes:
                 "model_id": "eleven_turbo_v2_5",
                 "voice_settings": {"stability": 0.5, "similarity_boost": 0.85},
             })
-            print(f"  TTS chunk status: {resp.status_code}, size: {len(resp.content)}", flush=True)
+            log.info(f"TTS chunk status: {resp.status_code}, size: {len(resp.content)}")
             if resp.status_code == 200:
                 audio_parts.append(resp.content)
             else:
-                print(f"  TTS error body: {resp.text[:200]}", flush=True)
+                log.warning(f"TTS error body: {resp.text[:200]}")
         except Exception as e:
-            print(f"  TTS EXCEPTION: {e}", flush=True)
+            log.error(f"TTS EXCEPTION: {e}")
 
     return b"".join(audio_parts)
 
@@ -332,6 +439,27 @@ async def execute_action(action: dict) -> str:
         success = write_note_sync(title, content)
         return f"Notiz '{title}' erstellt." if success else "Obsidian-Pfad nicht konfiguriert."
 
+    elif t in ("NOTE_LIST", "TASK_LIST"):
+        notes = list_notes_sync()
+        if not notes:
+            return "Keine Notizen im Inbox gefunden."
+        return "Notizen im Inbox:\n" + "\n".join(notes)
+
+    elif t == "NOTE_READ":
+        content = read_note_sync(p)
+        return content
+
+    elif t == "NOTE_APPEND":
+        parts = p.split("|", 1)
+        name = parts[0].strip()
+        content = parts[1].strip() if len(parts) > 1 else ""
+        success = append_note_sync(name, content)
+        return f"Notiz '{name}' ergänzt." if success else f"Notiz '{name}' nicht gefunden."
+
+    elif t == "TASK_DONE":
+        success = mark_task_done_sync(p)
+        return f"Aufgabe erledigt: {p}" if success else f"Aufgabe nicht gefunden: {p}"
+
     return ""
 
 
@@ -343,29 +471,39 @@ async def process_message(session_id: str, user_text: str, ws: WebSocket):
             del conversations[oldest]
         conversations[session_id] = []
 
-    # Refresh weather + tasks on activate
+    # Refresh weather + tasks on activate (only if data is older than 5 minutes)
     if "activate" in user_text.lower():
-        refresh_data()
+        if time.time() - _last_refresh > 300:
+            refresh_data()
 
     conversations[session_id].append({"role": "user", "content": user_text})
     history = conversations[session_id][-16:]
 
     # LLM call
-    response = await ai.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=400,
-        system=get_system_prompt(),
-        messages=history,
-    )
+    try:
+        response = await ai.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=400,
+            system=get_system_prompt(),
+            messages=history,
+        )
+    except Exception as e:
+        log.info(f"LLM-Fehler: {e}")
+        await ws.send_json({"type": "response", "text": "Entschuldigung, ich bin gerade nicht erreichbar.", "audio": ""})
+        return
     reply = response.content[0].text
-    print(f"  LLM raw: {reply[:200]}", flush=True)
+    log.info(f"LLM raw: {reply[:200]}")
     spoken_text, action = extract_action(reply)
+
+    # NOTE_LIST and NOTE_READ speak only via their result summary — suppress preceding text
+    if action and action["type"] in ("NOTE_LIST", "TASK_LIST", "NOTE_READ"):
+        spoken_text = ""
 
     # Speak the main response immediately
     if spoken_text:
         audio = await synthesize_speech(spoken_text)
-        print(f"  Jarvis: {spoken_text[:80]}", flush=True)
-        print(f"  Audio bytes: {len(audio)}", flush=True)
+        log.info(f"Jarvis: {spoken_text[:80]}")
+        log.info(f"Audio bytes: {len(audio)}")
         conversations[session_id].append({"role": "assistant", "content": spoken_text})
         await ws.send_json({
             "type": "response",
@@ -375,7 +513,7 @@ async def process_message(session_id: str, user_text: str, ws: WebSocket):
 
     # Execute action if any
     if action:
-        print(f"  Action: {action['type']} -> {action['payload'][:100]}", flush=True)
+        log.info(f"Action: {action['type']} -> {action['payload'][:100]}")
 
         # Quick voice feedback for SCREEN so user knows Jarvis is working
         if action["type"] == "SCREEN":
@@ -389,12 +527,12 @@ async def process_message(session_id: str, user_text: str, ws: WebSocket):
 
         try:
             action_result = await execute_action(action)
-            print(f"  Result: {action_result[:200]}", flush=True)
+            log.info(f"Result: {action_result[:200]}")
         except Exception as e:
-            print(f"  Action error: {e}", flush=True)
+            log.error(f"Action error: {e}")
             action_result = "Aktion fehlgeschlagen."
 
-        if action["type"] in ("OPEN", "TASK", "NOTE"):
+        if action["type"] in ("OPEN", "TASK", "TASK_DONE", "NOTE", "NOTE_APPEND"):
             # No summarization needed — action speaks for itself
             return
 
@@ -426,12 +564,12 @@ async def process_message(session_id: str, user_text: str, ws: WebSocket):
 async def websocket_endpoint(ws: WebSocket, token: str = ""):
     if not secrets.compare_digest(token, AUTH_TOKEN):
         await ws.close(code=status.WS_1008_POLICY_VIOLATION)
-        print("[jarvis] WebSocket abgelehnt: ungültiger Token", flush=True)
+        log.warning("WebSocket abgelehnt: ungültiger Token")
         return
     await ws.accept()
     _touch_activity()
     session_id = str(id(ws))
-    print(f"[jarvis] Client connected", flush=True)
+    log.info(f"Client connected")
 
     try:
         while True:
@@ -444,7 +582,7 @@ async def websocket_endpoint(ws: WebSocket, token: str = ""):
                 continue
 
             _touch_activity()
-            print(f"  You:    {user_text}", flush=True)
+            log.info(f"You: {user_text}")
             await process_message(session_id, user_text, ws)
 
     except WebSocketDisconnect:

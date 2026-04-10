@@ -12,8 +12,7 @@ set +a
 # 1. Start server in a new Terminal window
 osascript <<EOF
 tell application "Terminal"
-    do script "cd '$PROJECT_DIR' && python server.py"
-    activate
+    do script "cd '$PROJECT_DIR' && source .venv/bin/activate && python3 server.py"
 end tell
 EOF
 
@@ -41,7 +40,11 @@ fi
 # 5. Wait for server to start, then open Chrome
 sleep 3
 # Use array to prevent word-splitting and injection via BROWSER_URL
+CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 CHROME_ARGS=(
+    "--profile-directory=Jarvis"
+    "--no-first-run"
+    "--no-default-browser-check"
     "--autoplay-policy=no-user-gesture-required"
     "--disable-background-timer-throttling"
     "--disable-tab-discarding"
@@ -50,4 +53,9 @@ CHROME_ARGS=(
 if [ -n "${BROWSER_URL:-}" ]; then
     CHROME_ARGS+=("$BROWSER_URL")
 fi
-open -a "Google Chrome" --args "${CHROME_ARGS[@]}"
+"$CHROME_BIN" "${CHROME_ARGS[@]}" &
+
+# 6. Apply Rectangle Pro layout (after apps have opened)
+RECTANGLE_LAYOUT="${RECTANGLE_LAYOUT:-Jarvis}"
+sleep 2
+open "rectangle-pro://layout?name=${RECTANGLE_LAYOUT}"

@@ -20,10 +20,11 @@ SCRIPT_PATH = os.path.join(SCRIPT_DIR, "launch-session.sh")
 
 SAMPLE_RATE = 44100
 BLOCK_SIZE = 1024
-THRESHOLD = 0.15       # RMS volume spike threshold — lower = more sensitive
+THRESHOLD = 0.20       # RMS volume spike threshold — lower = more sensitive
 MIN_GAP = 0.1          # Minimum seconds between claps
 MAX_GAP = 1.2          # Maximum seconds between claps
 COOLDOWN = 3.0         # Seconds to ignore after trigger fires
+INPUT_DEVICE = 3       # USB 2.0 Camera microphone (MacBook closed/clamshell)
 
 last_clap_time = 0.0
 triggered = False
@@ -53,6 +54,7 @@ def audio_callback(indata, frames, time_info, status):
                 last_clap_time = now
 
 with sd.InputStream(
+    device=INPUT_DEVICE,
     samplerate=SAMPLE_RATE,
     blocksize=BLOCK_SIZE,
     channels=1,

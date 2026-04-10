@@ -48,3 +48,4 @@ env/
 .vscode/
 *.swp
 *.swo
+jarvis.log

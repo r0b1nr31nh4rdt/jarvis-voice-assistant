@@ -1,12 +1,13 @@
 // Jarvis V2 — Frontend
 const orb = document.getElementById('orb');
-const status = document.getElementById('status');
+const statusEl = document.getElementById('status');
 const transcript = document.getElementById('transcript');
 
 let ws;
 let audioQueue = [];
 let isPlaying = false;
 let audioUnlocked = false;
+let currentAudio = null;
 
 // Unlock audio on ANY user interaction
 function unlockAudio() {
@@ -27,7 +28,7 @@ function connect() {
     ws = new WebSocket(`ws://${location.host}/ws?token=${token}`);
     ws.onopen = () => {
         console.log('[jarvis] WebSocket connected');
-        status.textContent = 'Klicke einmal irgendwo, dann spricht Jarvis.';
+        statusEl.textContent = 'Klicke einmal irgendwo, dann spricht Jarvis.';
         setOrbState('thinking');
         ws.send(JSON.stringify({ text: 'Jarvis activate' }));
     };
@@ -39,14 +40,14 @@ function connect() {
                 queueAudio(data.audio);
             } else {
                 setOrbState('idle');
-                setTimeout(startListening, 500);
+                setTimeout(startListening, 1500);
             }
         } else if (data.type === 'status') {
-            status.textContent = data.text;
+            statusEl.textContent = data.text;
         }
     };
     ws.onclose = () => {
-        status.textContent = 'Verbindung verloren...';
+        statusEl.textContent = 'Verbindung verloren...';
         setTimeout(connect, 3000);
     };
 }
@@ -60,35 +61,33 @@ function playNext() {
     if (audioQueue.length === 0) {
         isPlaying = false;
         setOrbState('listening');
-        status.textContent = '';
-        setTimeout(startListening, 500);
+        statusEl.textContent = '';
+        setTimeout(startListening, 1500);
         return;
     }
     isPlaying = true;
     setOrbState('speaking');
-    status.textContent = '';
-    if (isListening) {
-        recognition.stop();
-        isListening = false;
-    }
+    statusEl.textContent = '';
+    if (isListening) { recognition.stop(); isListening = false; }
 
     const b64 = audioQueue.shift();
     const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
     const blob = new Blob([bytes], { type: 'audio/mpeg' });
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
-    audio.onended = () => { URL.revokeObjectURL(url); playNext(); };
-    audio.onerror = () => { URL.revokeObjectURL(url); playNext(); };
+    currentAudio = audio;
+    audio.onended = () => { URL.revokeObjectURL(url); currentAudio = null; playNext(); };
+    audio.onerror = () => { URL.revokeObjectURL(url); currentAudio = null; playNext(); };
     audio.play().catch(err => {
         console.warn('[jarvis] Autoplay blocked, waiting for click...');
-        status.textContent = 'Klicke irgendwo damit Jarvis sprechen kann.';
+        statusEl.textContent = 'Klicke irgendwo damit Jarvis sprechen kann.';
         setOrbState('idle');
         // Wait for click then retry
         document.addEventListener('click', function retry() {
             document.removeEventListener('click', retry);
             audio.play().then(() => {
                 setOrbState('speaking');
-                status.textContent = '';
+                statusEl.textContent = '';
             }).catch(() => playNext());
         });
     });
@@ -109,24 +108,37 @@ if (SpeechRecognition) {
         const last = event.results[event.results.length - 1];
         if (last.isFinal) {
             const text = last[0].transcript.trim();
-            if (text) {
-                addTranscript('user', text);
-                setOrbState('thinking');
-                status.textContent = 'Jarvis denkt nach...';
-                ws.send(JSON.stringify({ text }));
+            if (!text) return;
+
+            // Stop command — halt audio immediately, don't send to server
+            if (/^(stop|stopp|halt|aufhören|aufhoeren|schweig|ruhig)$/i.test(text)) {
+                if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+                audioQueue = [];
+                isPlaying = false;
+                setOrbState('listening');
+                statusEl.textContent = '';
+                return;
             }
+
+            // Ignore everything else while audio is playing (avoid feedback)
+            if (isPlaying) return;
+
+            addTranscript('user', text);
+            setOrbState('thinking');
+            statusEl.textContent = 'Jarvis denkt nach...';
+            ws.send(JSON.stringify({ text }));
         }
     };
 
     recognition.onend = () => {
         isListening = false;
-        if (!isPlaying) setTimeout(startListening, 300);
+        setTimeout(startListening, 300);
     };
 
     recognition.onerror = (event) => {
         isListening = false;
         if (event.error === 'no-speech' || event.error === 'aborted') {
-            if (!isPlaying) setTimeout(startListening, 300);
+            setTimeout(startListening, 300);
         } else {
             setTimeout(startListening, 1000);
         }
@@ -134,22 +146,28 @@ if (SpeechRecognition) {
 }
 
 function startListening() {
-    if (isPlaying) return;
     try {
         recognition.start();
         isListening = true;
         setOrbState('listening');
-        status.textContent = '';
+        statusEl.textContent = '';
     } catch(e) {}
 }
 
 orb.addEventListener('click', () => {
-    if (isPlaying) return;
+    if (isPlaying) {
+        if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+        audioQueue = [];
+        isPlaying = false;
+        setOrbState('listening');
+        statusEl.textContent = '';
+        return;
+    }
     if (isListening) {
         recognition.stop();
         isListening = false;
         setOrbState('idle');
-        status.textContent = 'Pausiert. Klicke zum Fortsetzen.';
+        statusEl.textContent = 'Pausiert. Klicke zum Fortsetzen.';
     } else {
         startListening();
     }
