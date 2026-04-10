@@ -10,17 +10,17 @@ Wenn der Nutzer nach dem Setup fragt oder "Richte Jarvis ein" sagt, folge den An
 
 **WICHTIG — Pruefe und installiere zuerst alle Voraussetzungen:**
 
-1. **Python**: Pruefe ob Python 3.10+ installiert ist (`python --version`). Falls nicht, installiere es:
-   - Windows: `winget install Python.Python.3.12`
+1. **Python**: Pruefe ob Python 3.10+ installiert ist (`python3 --version`). Falls nicht, installiere es:
+   - macOS: `brew install python`
    - Warte bis die Installation abgeschlossen ist und pruefe erneut
 
 2. **Google Chrome**: Pruefe ob Chrome installiert ist. Falls nicht, weise den Nutzer an Chrome von https://google.com/chrome zu installieren.
 
-3. **pip Dependencies**: `pip install -r requirements.txt`
+3. **pip Dependencies**: `pip3 install -r requirements.txt`
 
 4. **Playwright Browser**: `playwright install chromium`
 
-Erst NACHDEM alle Voraussetzungen installiert sind, fahre mit dem Setup in `SETUP.md` fort (API Keys abfragen, config.json erstellen, etc.).
+Erst NACHDEM alle Voraussetzungen installiert sind, fahre mit dem Setup in `SETUP.md` fort (API Keys abfragen, .env befuellen, etc.).
 
 ---
 
@@ -30,8 +30,7 @@ Erst NACHDEM alle Voraussetzungen installiert sind, fahre mit dem Setup in `SETU
 .
 ├── CLAUDE.md              # This file
 ├── SETUP.md               # Setup-Anleitung fuer Claude Code
-├── config.json            # Persoenliche Config (gitignored)
-├── config.example.json    # Template mit Platzhaltern
+├── .env                   # Persoenliche Config (gitignored)
 ├── requirements.txt       # Python Dependencies
 ├── server.py              # FastAPI Backend (Claude Haiku + ElevenLabs TTS)
 ├── browser_tools.py       # Playwright Browser-Steuerung
@@ -42,5 +41,5 @@ Erst NACHDEM alle Voraussetzungen installiert sind, fahre mit dem Setup in `SETU
 │   └── style.css          # Dark Theme mit Orb-Animation
 └── scripts/
     ├── clap-trigger.py    # Doppelklatschen-Erkennung
-    └── launch-session.ps1 # Startet alle Apps + Jarvis
+    └── launch-session.sh  # Startet alle Apps + Jarvis (macOS)
 ```

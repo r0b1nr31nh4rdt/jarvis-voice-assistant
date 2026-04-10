@@ -37,7 +37,7 @@ async def _get_browser():
         pw = await async_playwright().start()
         _browser = await pw.chromium.launch(headless=False, args=["--start-maximized"])
         _context = await _browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
             no_viewport=True,
         )
     return _context
@@ -145,7 +145,7 @@ async def fetch_news() -> str:
 async def open_url(url: str):
     """Open URL in user's default browser (non-blocking)."""
     _require_https(url)
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, webbrowser.open, url)
     return {"success": True, "url": url}
 

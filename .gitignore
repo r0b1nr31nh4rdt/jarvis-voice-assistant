@@ -17,9 +17,6 @@ __MACOSX
 .env.local
 .env.*.local
 
-# ── Jarvis Config (Legacy) ────────────────────────────
-config.json
-
 # ── Python ───────────────────────────────────────────
 __pycache__/
 *.py[cod]

@@ -96,7 +96,7 @@ You (speak) → Chrome Browser (Web Speech API) → FastAPI Server (local)
 
 2. **Create `.env`** from the template:
    ```bash
-   cp .env .env.backup  # optional backup
+   cp .env.example .env
    ```
 
 3. **Edit `.env`** with your API keys and preferences:
@@ -167,6 +167,7 @@ jarvis-voice-assistant/
 ├── browser_tools.py       # Playwright browser automation
 ├── screen_capture.py      # Screenshot + Claude Vision
 ├── .env                   # Your personal config (gitignored)
+├── .env.example           # Template — copy to .env and fill in your values
 ├── requirements.txt       # Python dependencies
 ├── frontend/
 │   ├── index.html         # Jarvis web UI
