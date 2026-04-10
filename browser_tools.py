@@ -7,7 +7,7 @@ import asyncio
 import re
 import webbrowser
 import subprocess
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote_plus
 import httpx
 from playwright.async_api import async_playwright
 
@@ -51,7 +51,7 @@ async def search_and_read(query: str) -> dict:
     page = await ctx.new_page()
     try:
         # DuckDuckGo search (no cookie banner, no reCAPTCHA)
-        search_url = f"https://duckduckgo.com/?q={query}"
+        search_url = f"https://duckduckgo.com/?q={quote_plus(query)}"
         await page.goto(search_url, timeout=15000)
         _bring_chromium_to_front()
         await page.wait_for_timeout(2000)

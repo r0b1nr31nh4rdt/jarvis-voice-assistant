@@ -6,6 +6,7 @@ speaks with ElevenLabs, controls browser with Playwright.
 
 import asyncio
 import base64
+import json
 import os
 import re
 import secrets
@@ -86,7 +87,9 @@ refresh_data()
 
 # Action parsing
 ACTION_PATTERN = re.compile(r'\[ACTION:(\w+)\]\s*(.*?)$', re.DOTALL | re.MULTILINE)
+ACTION_STRIP_PATTERN = re.compile(r'\[ACTION:\w+\][^\n]*', re.MULTILINE)
 
+MAX_SESSIONS = 50
 conversations: dict[str, list] = {}
 
 def build_system_prompt():
@@ -210,6 +213,9 @@ async def execute_action(action: dict) -> str:
 async def process_message(session_id: str, user_text: str, ws: WebSocket):
     """Process message and send responses via WebSocket."""
     if session_id not in conversations:
+        if len(conversations) >= MAX_SESSIONS:
+            oldest = next(iter(conversations))
+            del conversations[oldest]
         conversations[session_id] = []
 
     # Refresh weather + tasks on activate
@@ -268,12 +274,14 @@ async def process_message(session_id: str, user_text: str, ws: WebSocket):
             return
 
         # SEARCH, BROWSE, SCREEN — summarize results
-        if action_result and "fehlgeschlagen" not in action_result:
+        # Strip any [ACTION:...] patterns from web content before it reaches the LLM
+        safe_result = ACTION_STRIP_PATTERN.sub("", action_result).strip()
+        if safe_result and "fehlgeschlagen" not in safe_result:
             summary_resp = await ai.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=250,
                 system=f"Du bist Jarvis. Fasse die folgenden Informationen KURZ auf Deutsch zusammen, maximal 3 Saetze, im Jarvis-Stil. Sprich den Nutzer als {USER_ADDRESS} an. KEINE Tags in eckigen Klammern. KEINE ACTION-Tags.",
-                messages=[{"role": "user", "content": f"Fasse zusammen:\n\n{action_result}"}],
+                messages=[{"role": "user", "content": f"Fasse zusammen:\n\n{safe_result}"}],
             )
             summary = summary_resp.content[0].text
             summary, _ = extract_action(summary)

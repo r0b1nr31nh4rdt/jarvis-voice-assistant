@@ -17,9 +17,11 @@ tell application "Terminal"
 end tell
 EOF
 
-# 2. Open Spotify track (optional)
-if [ -n "${SPOTIFY_TRACK:-}" ]; then
-    open "$SPOTIFY_TRACK"
+# 2. Open Apple Music (optional — plays playlist if set, otherwise just opens)
+if [ -n "${APPLE_MUSIC_PLAYLIST:-}" ]; then
+    osascript -e "tell application \"Music\" to play playlist \"$APPLE_MUSIC_PLAYLIST\""
+else
+    open -a "Music"
 fi
 
 # 3. Open VS Code
