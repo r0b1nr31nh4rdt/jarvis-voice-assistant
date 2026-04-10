@@ -143,7 +143,7 @@ Wenn ein Nutzer "Richte Jarvis ein" sagt, fuehre folgende Schritte aus:
 **Schritt 0 — Voraussetzungen pruefen und installieren:**
 - Pruefe ob Python 3.10+ installiert ist: `python3 --version`
 - Falls nicht: `brew install python` — warte bis fertig, pruefe erneut
-- Pruefe ob Chrome oder Brave installiert ist. Falls nicht, weise den Nutzer an Chrome von https://google.com/chrome zu installieren
+- Pruefe ob Chrome oder Brave installiert ist. Falls nicht, installiere Chrome via Homebrew: `brew install --cask google-chrome`
 - Installiere Python-Pakete: `pip3 install -r requirements.txt`
 - Installiere Playwright Browser: `playwright install chromium`
 

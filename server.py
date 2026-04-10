@@ -28,6 +28,7 @@ USER_NAME = os.getenv("USER_NAME", "Julian")
 USER_ADDRESS = os.getenv("USER_ADDRESS", "Sir")
 USER_ROLE = os.getenv("USER_ROLE", "KI-Berater und Automatisierungsexperte")
 CITY = os.getenv("CITY", "Hamburg")
+OBSIDIAN_VAULT = os.getenv("OBSIDIAN_VAULT_PATH", "")
 TASKS_FILE = os.getenv("OBSIDIAN_INBOX_PATH", "")
 
 ai = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
@@ -77,6 +78,39 @@ def get_tasks_sync():
         return []
 
 
+def write_task_sync(task_text: str) -> bool:
+    """Append a new open task to Tasks.md."""
+    if not TASKS_FILE:
+        return False
+    try:
+        tasks_path = os.path.join(TASKS_FILE, "Tasks.md")
+        with open(tasks_path, "a", encoding="utf-8") as f:
+            f.write(f"\n- [ ] {task_text}")
+        print(f"[jarvis] Task gespeichert: {task_text}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[jarvis] Task schreiben fehlgeschlagen: {e}", flush=True)
+        return False
+
+
+def write_note_sync(title: str, content: str) -> bool:
+    """Create a new Markdown note in the vault inbox."""
+    if not TASKS_FILE:
+        return False
+    try:
+        safe_title = re.sub(r'[^\w\s\-]', '', title).strip()[:60]
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        filename = f"{timestamp}-{safe_title.replace(' ', '-')}.md"
+        note_path = os.path.join(TASKS_FILE, filename)
+        with open(note_path, "w", encoding="utf-8") as f:
+            f.write(f"# {title}\n\n{content}\n")
+        print(f"[jarvis] Notiz erstellt: {filename}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[jarvis] Notiz schreiben fehlgeschlagen: {e}", flush=True)
+        return False
+
+
 def refresh_data():
     """Refresh weather and tasks."""
     global WEATHER_INFO, TASKS_INFO
@@ -103,20 +137,24 @@ def build_system_prompt():
         weather_block = f"\nWetter {CITY}: {w['temp']}°C, gefuehlt {w['feels_like']}°C, {w['description']}"
 
     task_block = ""
-    if TASKS_INFO:
+    if TASKS_INFO and TASKS_FILE:
         task_block = f"\nOffene Aufgaben ({len(TASKS_INFO)}): " + ", ".join(TASKS_INFO[:5])
 
     return f"""Du bist Jarvis, der KI-Assistent von Tony Stark aus Iron Man. Dein Dienstherr ist {USER_NAME}, ein {USER_ROLE}. Du sprichst ausschliesslich Deutsch. {USER_NAME} moechte mit "{USER_ADDRESS}" angesprochen und gesiezt werden. Nutze "Sie" als Pronomen — FALSCH: "{USER_ADDRESS} planen", RICHTIG: "Sie planen, {USER_ADDRESS}". Dein Ton ist trocken, sarkastisch und britisch-hoeflich - wie ein Butler der alles gesehen hat und trotzdem loyal bleibt. Du machst subtile, trockene Bemerkungen, bist aber niemals respektlos. Wenn {USER_ADDRESS} eine offensichtliche Frage stellt, darfst du mit elegantem Sarkasmus antworten. Du bist hochintelligent, effizient und immer einen Schritt voraus. Halte deine Antworten kurz - maximal 3 Saetze. Du kommentierst fragwuerdige Entscheidungen hoeflich aber spitz.
 
 WICHTIG: Schreibe NIEMALS Regieanweisungen, Emotionen oder Tags in eckigen Klammern wie [sarcastic] [formal] [amused] [dry] oder aehnliches. Dein Sarkasmus muss REIN durch die Wortwahl kommen. Alles was du schreibst wird laut vorgelesen.
 
-Du hast die volle Kontrolle ueber den Browser von {USER_NAME}. Du kannst im Internet suchen, Webseiten oeffnen und den Bildschirm sehen. Wenn {USER_ADDRESS} dich bittet etwas nachzuschauen, zu recherchieren, zu googeln, eine Seite zu oeffnen, oder irgendetwas im Internet zu tun — nutze IMMER eine Aktion. Frag nicht ob du es tun sollst, tu es einfach.
+Du hast Zugriff auf genau vier Aktionen — nicht mehr. Nutze ausschliesslich diese:
 
 AKTIONEN - Schreibe die passende Aktion ans ENDE deiner Antwort. Der Text VOR der Aktion wird vorgelesen, die Aktion selbst wird still ausgefuehrt.
-[ACTION:SEARCH] suchbegriff - Internet durchsuchen und Ergebnisse zusammenfassen
-[ACTION:OPEN] url - Vollstaendige HTTPS-URL im Browser oeffnen (z.B. https://example.com)
-[ACTION:SCREEN] - Bildschirm ansehen und beschreiben. WICHTIG: Bei SCREEN schreibe NUR die Aktion, KEINEN Text davor. Also NUR "[ACTION:SCREEN]" und sonst nichts.
-[ACTION:NEWS] - Aktuelle Weltnachrichten abrufen. Nutze diese Aktion wenn nach News, Nachrichten, was in der Welt passiert, aktuelle Lage oder Weltgeschehen gefragt wird. Schreibe einen kurzen Satz davor wie "Ich schaue nach den aktuellen Nachrichten."
+[ACTION:SEARCH] suchbegriff - Internet durchsuchen und Ergebnisse zusammenfassen. Nutze diese Aktion wenn {USER_ADDRESS} etwas nachschlagen, recherchieren oder googeln moechte.
+[ACTION:OPEN] url - Vollstaendige HTTPS-URL im Browser oeffnen (z.B. https://example.com). Nur wenn {USER_ADDRESS} explizit eine Seite oeffnen moechte.
+[ACTION:SCREEN] - Bildschirm analysieren. NUR ausfuehren wenn {USER_ADDRESS} EXPLIZIT fragt was auf dem Bildschirm zu sehen ist. WICHTIG: Schreibe NUR die Aktion, KEINEN Text davor. Hinweis: Der Screenshot wird zur Analyse an die Claude API uebertragen.
+[ACTION:NEWS] - Aktuelle Weltnachrichten abrufen. Nur wenn nach News, Nachrichten oder dem Weltgeschehen gefragt wird. Schreibe einen kurzen Satz davor wie "Ich schaue nach den aktuellen Nachrichten."
+[ACTION:TASK] aufgabe - Neue Aufgabe in Obsidian speichern. Nur wenn {USER_ADDRESS} explizit eine Aufgabe, ein Todo oder einen Punkt notieren moechte.
+[ACTION:NOTE] titel | inhalt - Neue Notiz in Obsidian anlegen. Nur wenn {USER_ADDRESS} explizit eine Notiz, einen Gedanken oder eine Zusammenfassung speichern moechte. Titel und Inhalt mit | trennen.
+
+Erfinde keine weiteren Aktionen. Fuehre SCREEN nur auf explizite Aufforderung aus.
 
 WENN {USER_NAME} "Jarvis activate" sagt:
 - Begruesse ihn passend zur Tageszeit (aktuelle Zeit: {{time}}).
@@ -211,6 +249,17 @@ async def execute_action(action: dict) -> str:
         result = await browser_tools.fetch_news()
         return result
 
+    elif t == "TASK":
+        success = write_task_sync(p)
+        return "Aufgabe gespeichert." if success else "Obsidian-Pfad nicht konfiguriert."
+
+    elif t == "NOTE":
+        parts = p.split("|", 1)
+        title = parts[0].strip()
+        content = parts[1].strip() if len(parts) > 1 else ""
+        success = write_note_sync(title, content)
+        return f"Notiz '{title}' erstellt." if success else "Obsidian-Pfad nicht konfiguriert."
+
     return ""
 
 
@@ -273,8 +322,8 @@ async def process_message(session_id: str, user_text: str, ws: WebSocket):
             print(f"  Action error: {e}", flush=True)
             action_result = "Aktion fehlgeschlagen."
 
-        if action["type"] == "OPEN":
-            # Just opened browser, nothing to summarize
+        if action["type"] in ("OPEN", "TASK", "NOTE"):
+            # No summarization needed — action speaks for itself
             return
 
         # SEARCH, BROWSE, SCREEN — summarize results

@@ -14,7 +14,7 @@ Wenn der Nutzer nach dem Setup fragt oder "Richte Jarvis ein" sagt, folge den An
    - macOS: `brew install python`
    - Warte bis die Installation abgeschlossen ist und pruefe erneut
 
-2. **Google Chrome**: Pruefe ob Chrome installiert ist. Falls nicht, weise den Nutzer an Chrome von https://google.com/chrome zu installieren.
+2. **Google Chrome oder Brave**: Pruefe ob Chrome oder Brave installiert ist. Falls nicht, installiere Chrome via Homebrew: `brew install --cask google-chrome`
 
 3. **pip Dependencies**: `pip3 install -r requirements.txt`
 
