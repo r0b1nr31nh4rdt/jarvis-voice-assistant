@@ -14,7 +14,7 @@ Dein persoenlicher KI-Assistent — inspiriert von Iron Mans Jarvis.
 ## Voraussetzungen
 
 - **macOS**
-- **Google Chrome** (fuer Spracheingabe + Jarvis UI)
+- **Chrome oder Brave** (fuer Spracheingabe + Jarvis UI — beides funktioniert)
 - **Claude Code** installiert
 
 Python, alle Dependencies und Browser-Treiber werden automatisch von Claude Code installiert — du musst nichts manuell einrichten.
@@ -30,12 +30,13 @@ Oeffne diesen Ordner in VS Code, starte Claude Code, und sag:
 Claude Code fragt dich dann nach:
 
 1. **Dein Name** und wie du angesprochen werden willst (z.B. "Sir")
-2. **Anthropic API Key** — von https://console.anthropic.com (fuer Claude Haiku, das Gehirn)
-3. **ElevenLabs API Key** — von https://elevenlabs.io (fuer die Stimme)
-4. **Apple Music Playlist** — Name der Playlist die beim Start spielen soll
-5. **Website** — welche Seite soll im Browser aufgehen?
-6. **Stadt fuers Wetter** — z.B. Hamburg
-7. **Obsidian Vault** — optional, welcher Ordner soll Jarvis kennen?
+2. **Deine Taetigkeit** (z.B. "Entwickler", "Designer") — praegt Jarvis Persoenlichkeit
+3. **Anthropic API Key** — von https://console.anthropic.com (fuer Claude Haiku, das Gehirn)
+4. **ElevenLabs API Key** — von https://elevenlabs.io (fuer die Stimme)
+5. **Apple Music Playlist** — Name der Playlist die beim Start spielen soll
+6. **Website** — welche Seite soll im Browser aufgehen?
+7. **Stadt fuers Wetter** — z.B. Hamburg
+8. **Obsidian Vault** — optional, welcher Ordner soll Jarvis kennen?
 
 ---
 
@@ -55,39 +56,36 @@ ELEVENLABS_API_KEY=sk_...
 ELEVENLABS_VOICE_ID=VOICE_ID
 USER_NAME=Dein Name
 USER_ADDRESS=Sir
+USER_ROLE=Deine Taetigkeit
 CITY=Hamburg
 OBSIDIAN_INBOX_PATH=/Users/dein_user/pfad/zum/obsidian/inbox
 APPLE_MUSIC_PLAYLIST=Deine Playlist
 BROWSER_URL=https://deine-website.com
 ```
 
+Alle Werte im Systemprompt (Name, Anrede, Taetigkeit) werden automatisch aus der `.env` geladen — keine manuelle Bearbeitung von `server.py` noetig.
+
 ### 3. ElevenLabs Stimme
 Eine deutsche Stimme auswaehlen und die Voice ID in die `.env` eintragen. Empfehlung: **Felix Serenitas** (Starter Plan noetig) oder eine der Standard-Stimmen (Free Plan).
-
-### 4. Systemprompt
-Der Systemprompt wird in `server.py` automatisch aus den `.env`-Werten generiert. Er enthaelt:
-- Jarvis-Persoenlichkeit (trocken, sarkastisch, britisch-hoeflich)
-- Siezen mit gewaehlter Anrede
-- Wetter- und Aufgaben-Integration
-- Browser-Steuerung via Action-Tags
-- Screen-Capture-Faehigkeit
 
 ---
 
 ## Architektur
 
 ```
-Mikrofon (Chrome) → Web Speech API → WebSocket → FastAPI Server
-                                                      ↓
-                                                Claude Haiku (denkt)
-                                                      ↓
-                                    ┌─────────────────┼──────────────────┐
-                                    ↓                 ↓                  ↓
-                            ElevenLabs TTS     Playwright Browser   Screen Capture
-                            (spricht)          (sucht/oeffnet)     (sieht Bildschirm)
-                                    ↓
-                            Audio → Browser Speaker
+Mikrofon (Chrome/Brave) → Web Speech API → WebSocket → FastAPI Server
+                                                            ↓
+                                                      Claude Haiku (denkt)
+                                                            ↓
+                                        ┌─────────────────┼──────────────────┐
+                                        ↓                 ↓                  ↓
+                                ElevenLabs TTS     Playwright Browser   Screen Capture
+                                (spricht)          (sucht/oeffnet)     (sieht Bildschirm)
+                                        ↓
+                                Audio → Browser Speaker
 ```
+
+> **Hinweis:** Der Playwright-Browser ist ein separates, isoliertes Chromium-Fenster — er teilt keine Cookies oder Sessions mit deinem persoenlichen Browser.
 
 ---
 
@@ -97,7 +95,7 @@ Mikrofon (Chrome) → Web Speech API → WebSocket → FastAPI Server
 ```bash
 python3 server.py
 ```
-Dann http://localhost:8340 in Chrome oeffnen.
+Dann http://localhost:8340 in Chrome oder Brave oeffnen.
 
 ### Alles per Doppelklatschen starten
 ```bash
@@ -118,7 +116,7 @@ Zweimal klatschen → Apple Music, VS Code, Obsidian, Chrome mit Jarvis starten 
 
 - **"Wie ist das Wetter?"** → kennt das aktuelle Wetter
 - **"Such nach MiroFish"** → oeffnet Browser, sucht, liest Ergebnisse
-- **"Oeffne skool.com"** → oeffnet die Seite im Browser
+- **"Oeffne https://example.com"** → oeffnet die Seite im Browser (immer vollstaendige https:// URL angeben)
 - **"Was siehst du auf meinem Bildschirm?"** → macht Screenshot, beschreibt was er sieht
 - **Jede Frage** → antwortet im Jarvis-Stil mit Stimme
 
@@ -128,12 +126,13 @@ Zweimal klatschen → Apple Music, VS Code, Obsidian, Chrome mit Jarvis starten 
 
 | Problem | Loesung |
 |---|---|
-| Jarvis spricht nicht | Pruefen ob Server laeuft (`python3 server.py`) und Chrome offen ist |
+| Jarvis spricht nicht | Pruefen ob Server laeuft (`python3 server.py`) und Browser offen ist |
 | "Verbindung verloren" | Alter Server-Prozess laeuft noch → `pkill -f server.py` und neu starten |
 | Port 8340 belegt | `lsof -ti:8340 \| xargs kill` ausfuehren |
 | Klatschen wird nicht erkannt | Threshold in `clap-trigger.py` anpassen |
 | Browser-Suche geht nicht | `playwright install chromium` ausfuehren |
-| Kein Audio im Browser | Einmal auf die Seite klicken (Chrome Autoplay-Policy) |
+| Kein Audio im Browser | Einmal auf die Seite klicken (Chrome/Brave Autoplay-Policy) |
+| "Nur HTTPS-URLs sind erlaubt" | URL mit https:// angeben, z.B. "Oeffne https://example.com" |
 
 ---
 
@@ -144,14 +143,14 @@ Wenn ein Nutzer "Richte Jarvis ein" sagt, fuehre folgende Schritte aus:
 **Schritt 0 — Voraussetzungen pruefen und installieren:**
 - Pruefe ob Python 3.10+ installiert ist: `python3 --version`
 - Falls nicht: `brew install python` — warte bis fertig, pruefe erneut
-- Pruefe ob Google Chrome installiert ist. Falls nicht, weise den Nutzer an Chrome zu installieren
+- Pruefe ob Chrome oder Brave installiert ist. Falls nicht, weise den Nutzer an Chrome von https://google.com/chrome zu installieren
 - Installiere Python-Pakete: `pip3 install -r requirements.txt`
 - Installiere Playwright Browser: `playwright install chromium`
 
 **Schritt 1 — Nutzerdaten abfragen:**
 Frage nach:
 - Name (z.B. "Robin")
-- Taetigkeit/Rolle (z.B. "KI-Berater und Automatisierungsexperte") — wird in den Systemprompt eingebaut
+- Taetigkeit/Rolle (z.B. "Entwickler", "Designer") — wird in den Systemprompt eingebaut
 - Gewuenschte Anrede (z.B. "Sir", "Chef", oder einfach Vorname)
 - Anthropic API Key (von https://console.anthropic.com)
 - ElevenLabs API Key (von https://elevenlabs.io)
@@ -161,24 +160,16 @@ Frage nach:
 - Obsidian Vault Pfad (optional, macOS-Pfad z.B. `/Users/name/Library/Mobile Documents/iCloud~md~obsidian/Documents/vault`)
 
 **Schritt 2 — .env befuellen:**
-Trage alle Nutzerdaten in die `.env` Datei ein. Die Datei existiert bereits mit Platzhaltern.
+Trage alle Nutzerdaten in die `.env` Datei ein. Die Datei existiert bereits mit Platzhaltern. Name, Anrede und Taetigkeit werden automatisch in den Systemprompt eingebaut — `server.py` muss NICHT manuell bearbeitet werden.
 
 **Schritt 3 — ElevenLabs Stimme einrichten:**
 - Liste verfuegbare Stimmen via ElevenLabs API
 - Empfehle eine deutsche Stimme
 - Trage die Voice ID in `.env` ein
 
-**Schritt 4 — Systemprompt anpassen:**
-Oeffne `server.py` und finde die Funktion `build_system_prompt()`. Ersetze ALLE Vorkommen der folgenden Werte im gesamten Prompt-Text:
-- Jedes "Julian" → Name des Nutzers (kommt mehrfach vor im Prompt!)
-- "KI-Berater und Automatisierungsexperte" → Taetigkeit/Rolle des Nutzers
-- Jedes "Sir" als Anrede → gewuenschte Anrede des Nutzers
-
-WICHTIG: Pruefe den Prompt sorgfaeltig — "Julian" und "Sir" kommen an mehreren Stellen vor. Alle muessen ersetzt werden.
-
-**Schritt 5 — Testen:**
+**Schritt 4 — Testen:**
 - Starte den Server: `python3 server.py`
-- Oeffne http://localhost:8340 in Chrome
+- Oeffne http://localhost:8340 in Chrome oder Brave
 - Pruefe ob Jarvis spricht und antwortet
 
 ---

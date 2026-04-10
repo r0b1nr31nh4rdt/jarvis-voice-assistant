@@ -4,12 +4,15 @@ Web search via DuckDuckGo Lite, page visits via Playwright, URL opening.
 """
 
 import asyncio
+import os
 import webbrowser
 import subprocess
 from urllib.parse import urlparse, quote_plus
 from playwright.async_api import async_playwright
 
-_browser = None
+# Dedicated browser profile — isolated from your personal browser data
+_PROFILE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".browser-profile")
+
 _context = None
 
 
@@ -32,11 +35,16 @@ def _bring_chromium_to_front():
 
 
 async def _get_browser():
-    global _browser, _context
-    if _browser is None:
+    global _context
+    if _context is None:
         pw = await async_playwright().start()
-        _browser = await pw.chromium.launch(headless=False, args=["--start-maximized"])
-        _context = await _browser.new_context(
+        # launch_persistent_context gives Jarvis its own isolated browser profile.
+        # Cookies and sessions are stored in .browser-profile/ and never touch
+        # your personal browser data.
+        _context = await pw.chromium.launch_persistent_context(
+            user_data_dir=_PROFILE_DIR,
+            headless=False,
+            args=["--start-maximized"],
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
             no_viewport=True,
         )
@@ -151,8 +159,7 @@ async def open_url(url: str):
 
 
 async def close():
-    global _browser, _context
-    if _browser:
-        await _browser.close()
-        _browser = None
+    global _context
+    if _context:
+        await _context.close()
         _context = None

@@ -12,6 +12,9 @@
 .TemporaryItems
 __MACOSX
 
+# ── Browser-Profil (Playwright) ──────────────────────
+.browser-profile/
+
 # ── Umgebungsvariablen ────────────────────────────────
 .env
 .env.local
